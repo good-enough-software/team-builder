@@ -13,7 +13,9 @@ const router = createBrowserRouter([
     path: "/view",
     element: <TeamView />,
   },
-]);
+], {
+  basename: "/team-builder"
+});
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

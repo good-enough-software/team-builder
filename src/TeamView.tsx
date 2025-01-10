@@ -106,7 +106,8 @@ function TeamView() {
   }, []);
 
   const handleBackToBuilder = () => {
-    window.location.href = window.location.origin;
+    const baseUrl = import.meta.env.DEV ? window.location.origin : 'https://good-enough-software.github.io/team-builder';
+    window.location.href = baseUrl;
   };
 
   if (error) {

@@ -231,7 +231,8 @@ function App() {
       rosterOnly
     };
     const encodedData = encodeURIComponent(JSON.stringify(shareData));
-    return `${window.location.origin}/view?data=${encodedData}`;
+    const baseUrl = import.meta.env.DEV ? window.location.origin : 'https://good-enough-software.github.io/team-builder';
+    return `${baseUrl}/view?data=${encodedData}`;
   };
 
   // Function to share URL or fallback to clipboard
