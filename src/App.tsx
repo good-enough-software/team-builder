@@ -375,13 +375,11 @@ function App() {
                   Skill Levels
                 </Typography>
                 <Paper variant="outlined" sx={{ 
-                  maxHeight: 'calc(100vh - 450px)',
-                  overflow: 'hidden',
+                  height: 'calc(100vh - 450px)',
+                  overflow: 'auto',
                   borderRadius: 2
                 }}>
                   <List sx={{ 
-                    overflowY: 'auto',
-                    maxHeight: '100%',
                     '& .MuiListItem-root': {
                       borderBottom: 1,
                       borderColor: 'divider',
