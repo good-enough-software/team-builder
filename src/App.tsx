@@ -242,13 +242,26 @@ function App() {
       rosterOnly
     };
     const encodedData = encodeURIComponent(JSON.stringify(shareData));
-    const baseUrl = import.meta.env.DEV ? window.location.origin : 'https://good-enough-software.github.io/team-builder';
+    const baseUrl = import.meta.env.DEV ? window.location.origin + "/team-builder" : 'https://good-enough-software.github.io/team-builder';
     return `${baseUrl}/view?data=${encodedData}`;
+  };
+
+  // Function to shorten URL using TinyURL
+  const shortenUrl = async (url: string): Promise<string> => {
+    try {
+      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`);
+      if (!response.ok) throw new Error('Failed to shorten URL');
+      return await response.text();
+    } catch (error) {
+      console.error('Error shortening URL:', error);
+      return url; // Return original URL if shortening fails
+    }
   };
 
   // Function to share URL or fallback to clipboard
   const shareUrl = async (includeSkills: boolean, rosterOnly: boolean = false) => {
-    const url = generateShareableUrl(includeSkills, rosterOnly);
+    const longUrl = generateShareableUrl(includeSkills, rosterOnly);
+    const url = await shortenUrl(longUrl);
     const title = rosterOnly ? 'Soccer Roster' : 'Soccer Teams';
     const text = rosterOnly ? 'Check out this soccer roster!' : 'Check out these soccer teams!';
 
