@@ -82,12 +82,14 @@ interface Team {
 }
 
 function App() {
+  const REQUIRED_PLAYERS = 15;
   const [players, setPlayers] = useState<Player[]>(() => {
     const savedPlayers = localStorage.getItem('soccerPlayers');
     return savedPlayers ? JSON.parse(savedPlayers) : [];
   });
   
   const [currentName, setCurrentName] = useState('');
+  const [maxSkillDiff, setMaxSkillDiff] = useState(5); // New state for max skill difference
   const [teams, setTeams] = useState<Team[]>(() => {
     const savedTeams = localStorage.getItem('soccerTeams');
     return savedTeams ? JSON.parse(savedTeams) : [];
@@ -117,9 +119,12 @@ function App() {
   };
 
   const addPlayer = () => {
-    if (currentName.trim() && players.length < 15) {
-      setPlayers([...players, { name: currentName.trim(), skillLevel: 50 }]);
-      setCurrentName('');
+    if (currentName.trim() && players.length < REQUIRED_PLAYERS) {
+      const newPlayerCount = players.length + 1;
+      if (newPlayerCount <= REQUIRED_PLAYERS) {
+        setPlayers([...players, { name: currentName.trim(), skillLevel: 50 }]);
+        setCurrentName('');
+      }
     }
   };
 
@@ -137,7 +142,7 @@ function App() {
   };
 
   const addRemainingPlayers = () => {
-    const remainingCount = 15 - players.length;
+    const remainingCount = REQUIRED_PLAYERS - players.length;
     if (remainingCount <= 0) return;
 
     const newPlayers = [...players];
@@ -154,63 +159,69 @@ function App() {
   };
 
   const calculateTeams = () => {
-    if (players.length !== 15) return;
+    if (players.length !== REQUIRED_PLAYERS) return;
 
-    // Create a shuffled copy of players
-    const shuffledPlayers = [...players]
-      .sort(() => Math.random() - 0.5) // First random shuffle
-      .sort(() => Math.random() - 0.5); // Second shuffle for better randomization
-    
-    // Initialize three teams
-    const teamAssignments: Team[] = [
-      { players: [], totalSkill: 0 },
-      { players: [], totalSkill: 0 },
-      { players: [], totalSkill: 0 },
-    ];
+    let bestTeams: Team[] | null = null;
+    let bestSkillDiff = Infinity;
+    let attempts = 0;
+    const maxAttempts = 1000; // Prevent infinite loops
 
-    // Sort players by skill level for initial distribution
-    const sortedPlayers = [...shuffledPlayers].sort((a, b) => b.skillLevel - a.skillLevel);
-
-    // Distribute top players first (top 3)
-    sortedPlayers.slice(0, 3).forEach((player, idx) => {
-      teamAssignments[idx].players.push(player);
-      teamAssignments[idx].totalSkill += player.skillLevel;
-    });
-
-    // Distribute middle players (next 6) with some randomization
-    const middlePlayers = sortedPlayers.slice(3, 9);
-    for (let i = 0; i < middlePlayers.length; i++) {
-      const player = middlePlayers[i];
-      // Find the team with the lowest total skill, but add some randomness
-      const randomizedTeams = teamAssignments
-        .map((team, index) => ({ index, totalSkill: team.totalSkill + (Math.random() * 20 - 10) }))
-        .sort((a, b) => a.totalSkill - b.totalSkill);
+    while (attempts < maxAttempts) {
+      attempts++;
       
-      const targetTeam = teamAssignments[randomizedTeams[0].index];
-      targetTeam.players.push(player);
-      targetTeam.totalSkill += player.skillLevel;
+      // Create a shuffled copy of players
+      const shuffledPlayers = [...players];
+      for (let i = shuffledPlayers.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffledPlayers[i], shuffledPlayers[j]] = [shuffledPlayers[j], shuffledPlayers[i]];
+      }
+      
+      // Initialize three teams
+      const teamAssignments: Team[] = [
+        { players: [], totalSkill: 0 },
+        { players: [], totalSkill: 0 },
+        { players: [], totalSkill: 0 },
+      ];
+
+      // Distribute players in a snake draft pattern
+      for (let i = 0; i < shuffledPlayers.length; i++) {
+        const player = shuffledPlayers[i];
+        const targetTeamIndex = i % 3;
+        teamAssignments[targetTeamIndex].players.push(player);
+        teamAssignments[targetTeamIndex].totalSkill += player.skillLevel;
+      }
+
+      // Calculate max difference between teams
+      const skills = teamAssignments.map(t => t.totalSkill);
+      const currentMaxDiff = Math.max(...skills) - Math.min(...skills);
+
+      // If this distribution is better than what we've seen, keep it
+      if (currentMaxDiff < bestSkillDiff) {
+        bestSkillDiff = currentMaxDiff;
+        bestTeams = teamAssignments;
+
+        // If we're within the max difference threshold, we can stop
+        if (currentMaxDiff <= maxSkillDiff) {
+          break;
+        }
+      }
     }
 
-    // Distribute remaining players (last 6) with more randomization
-    const remainingPlayers = sortedPlayers.slice(9);
-    for (let i = 0; i < remainingPlayers.length; i++) {
-      const player = remainingPlayers[i];
-      // Even more randomness for the last players
-      const randomizedTeams = teamAssignments
-        .map((team, index) => ({ index, totalSkill: team.totalSkill + (Math.random() * 30 - 15) }))
-        .sort((a, b) => a.totalSkill - b.totalSkill);
-      
-      const targetTeam = teamAssignments[randomizedTeams[0].index];
-      targetTeam.players.push(player);
-      targetTeam.totalSkill += player.skillLevel;
+    if (bestTeams) {
+      // Shuffle players within each team for display
+      bestTeams.forEach(team => {
+        for (let i = team.players.length - 1; i > 0; i--) {
+          const j = Math.floor(Math.random() * (i + 1));
+          [team.players[i], team.players[j]] = [team.players[j], team.players[i]];
+        }
+      });
+
+      setTeams(bestTeams);
+      if (bestSkillDiff > maxSkillDiff) {
+        setSnackbarMessage(`Best possible difference was ${bestSkillDiff} after ${attempts} attempts`);
+        setSnackbarOpen(true);
+      }
     }
-
-    // Shuffle the players within each team for display
-    teamAssignments.forEach(team => {
-      team.players.sort(() => Math.random() - 0.5);
-    });
-
-    setTeams(teamAssignments);
   };
 
   // Function to generate shareable URLs
@@ -299,7 +310,7 @@ function App() {
                   borderColor: 'divider'
                 }}>
                   <Typography variant="h6" color="primary.dark">
-                    Players ({players.length}/15)
+                    Players ({players.length}/{REQUIRED_PLAYERS})
                   </Typography>
                   <Box sx={{ display: 'flex', gap: 1 }}>
                     <IconButton
@@ -355,7 +366,7 @@ function App() {
                     size="small"
                     variant="contained"
                     onClick={addPlayer}
-                    disabled={players.length >= 15}
+                    disabled={players.length >= REQUIRED_PLAYERS}
                     startIcon={<PersonAddIcon />}
                   >
                     Add
@@ -364,7 +375,7 @@ function App() {
                     size="small"
                     variant="outlined"
                     onClick={addRemainingPlayers}
-                    disabled={players.length >= 15}
+                    disabled={players.length >= REQUIRED_PLAYERS}
                     startIcon={<GroupAddIcon />}
                   >
                     Add Rest
@@ -443,25 +454,44 @@ function App() {
                   </List>
                 </Paper>
 
-                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center' }}>
-                  <Button
-                    variant="contained"
-                    color="primary"
-                    onClick={calculateTeams}
-                    disabled={players.length !== 15}
-                    size="large"
-                    startIcon={<CalculateIcon />}
-                    sx={{ 
-                      px: 4,
-                      py: 1,
-                      boxShadow: 4,
-                      '&:hover': {
-                        boxShadow: 6
-                      }
-                    }}
-                  >
-                    Calculate Teams
-                  </Button>
+                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                    Maximum Skill Difference: {maxSkillDiff}
+                  </Typography>
+                  <Slider
+                    size="small"
+                    value={maxSkillDiff}
+                    onChange={(_, newValue) => setMaxSkillDiff(newValue as number)}
+                    min={0}
+                    max={200}
+                    valueLabelDisplay="auto"
+                    sx={{ mb: 2 }}
+                  />
+                  <Box sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <Button
+                      variant="contained"
+                      color="primary"
+                      onClick={calculateTeams}
+                      disabled={players.length !== REQUIRED_PLAYERS}
+                      size="large"
+                      startIcon={<CalculateIcon />}
+                      sx={{ 
+                        px: 4,
+                        py: 1,
+                        boxShadow: 4,
+                        '&:hover': {
+                          boxShadow: 6
+                        }
+                      }}
+                    >
+                      Calculate Teams
+                    </Button>
+                    {players.length > 0 && players.length !== REQUIRED_PLAYERS && (
+                      <Typography variant="caption" color="error">
+                        Need exactly {REQUIRED_PLAYERS} players for 3 teams of 5
+                      </Typography>
+                    )}
+                  </Box>
                 </Box>
               </Paper>
             </Grid>
@@ -555,7 +585,7 @@ function App() {
                   }}>
                     <SportsSoccerIcon sx={{ fontSize: 60, color: 'primary.main', opacity: 0.5 }} />
                     <Typography variant="h6" color="text.secondary" align="center">
-                      Add 15 players and click Calculate Teams to see the balanced teams here
+                      Add exactly {REQUIRED_PLAYERS} players to create 3 balanced teams of 5 players each
                     </Typography>
                   </Box>
                 )}
