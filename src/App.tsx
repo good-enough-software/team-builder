@@ -83,19 +83,95 @@ interface Team {
 
 function App() {
   const REQUIRED_PLAYERS = 15;
+  const [isViewMode, setIsViewMode] = useState(false);
+
+  // Check if we're in view mode on mount and hash changes
+  useEffect(() => {
+    const checkViewMode = () => {
+      const hash = window.location.hash;
+      setIsViewMode(hash.startsWith('#/view'));
+    };
+
+    checkViewMode();
+    window.addEventListener('hashchange', checkViewMode);
+    return () => window.removeEventListener('hashchange', checkViewMode);
+  }, []);
+
   const [players, setPlayers] = useState<Player[]>(() => {
+    // Try to load data from URL hash first
+    const hash = window.location.hash;
+    if (hash.startsWith('#/view?data=')) {
+      try {
+        const encodedData = hash.replace('#/view?data=', '');
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        if (decodedData.players) {
+          return decodedData.players;
+        }
+        if (decodedData.teams) {
+          // Flatten all players from teams into a single array
+          const allPlayers = decodedData.teams.flatMap((team: Team) => team.players);
+          return allPlayers;
+        }
+      } catch (error) {
+        console.error('Error parsing URL data:', error);
+      }
+    }
+    // Fall back to localStorage if no URL data
     const savedPlayers = localStorage.getItem('soccerPlayers');
     return savedPlayers ? JSON.parse(savedPlayers) : [];
   });
   
   const [currentName, setCurrentName] = useState('');
-  const [maxSkillDiff, setMaxSkillDiff] = useState(5); // New state for max skill difference
+  const [maxSkillDiff, setMaxSkillDiff] = useState(50);
   const [teams, setTeams] = useState<Team[]>(() => {
+    // Try to load teams from URL hash first
+    const hash = window.location.hash;
+    if (hash.startsWith('#/view?data=')) {
+      try {
+        const encodedData = hash.replace('#/view?data=', '');
+        const decodedData = JSON.parse(decodeURIComponent(encodedData));
+        if (decodedData.teams) {
+          return decodedData.teams;
+        }
+      } catch (error) {
+        console.error('Error parsing URL data:', error);
+      }
+    }
+    // Fall back to localStorage if no URL data
     const savedTeams = localStorage.getItem('soccerTeams');
     return savedTeams ? JSON.parse(savedTeams) : [];
   });
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
+
+  // Add effect to handle hash changes
+  useEffect(() => {
+    const handleHashChange = () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#/view?data=')) {
+        try {
+          const encodedData = hash.replace('#/view?data=', '');
+          const decodedData = JSON.parse(decodeURIComponent(encodedData));
+          if (decodedData.players) {
+            setPlayers(decodedData.players);
+          }
+          if (decodedData.teams) {
+            setTeams(decodedData.teams);
+            if (!decodedData.players) {
+              // If only teams were shared, extract players from teams
+              const allPlayers = decodedData.teams.flatMap((team: Team) => team.players);
+              setPlayers(allPlayers);
+            }
+          }
+        } catch (error) {
+          console.error('Error parsing URL data:', error);
+        }
+      }
+    };
+
+    window.addEventListener('hashchange', handleHashChange);
+    return () => window.removeEventListener('hashchange', handleHashChange);
+  }, []);
 
   // Save players to localStorage whenever they change
   useEffect(() => {
@@ -242,8 +318,9 @@ function App() {
       rosterOnly
     };
     const encodedData = encodeURIComponent(JSON.stringify(shareData));
-    const baseUrl = import.meta.env.DEV ? window.location.origin + "/team-builder" : 'https://good-enough-software.github.io/team-builder';
-    return `${baseUrl}/view?data=${encodedData}`;
+    const baseUrl = import.meta.env.DEV ? window.location.origin : 'https://good-enough-software.github.io/team-builder';
+    // Use hash-based routing instead of path-based to avoid service worker issues
+    return `${baseUrl}/#/view?data=${encodedData}`;
   };
 
   // Function to shorten URL using TinyURL
@@ -309,302 +386,406 @@ function App() {
             </Typography>
           </Box>
 
-          <Grid container spacing={3}>
-            {/* Left side - Players (40%) */}
-            <Grid item xs={12} md={5}>
-              <Paper elevation={3} sx={{ p: 3, height: '100%' }}>
-                <Box sx={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  mb: 3,
-                  pb: 2,
-                  borderBottom: 1,
-                  borderColor: 'divider'
-                }}>
-                  <Typography variant="h6" color="primary.dark">
-                    Players ({players.length}/{REQUIRED_PLAYERS})
-                  </Typography>
-                  <Box sx={{ display: 'flex', gap: 1 }}>
-                    <IconButton
-                      onClick={() => shareUrl(false, true)}
-                      color="primary"
-                      size="small"
-                      disabled={players.length === 0}
-                      sx={{ 
-                        bgcolor: alpha(theme.palette.primary.main, 0.1),
-                        '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.2) }
-                      }}
-                    >
-                      <ShareIcon />
-                    </IconButton>
-                    <IconButton 
-                      onClick={resetAll} 
-                      color="error" 
-                      size="small" 
-                      sx={{ 
-                        bgcolor: alpha('#f44336', 0.1),
-                        '&:hover': { bgcolor: alpha('#f44336', 0.2) }
-                      }}
-                    >
-                      <RefreshIcon />
-                    </IconButton>
-                  </Box>
-                </Box>
-
-                <Box sx={{ 
-                  display: 'flex', 
-                  gap: 1,
-                  mb: 3,
-                  flexWrap: 'nowrap',
-                  '& .MuiButton-root': {
-                    whiteSpace: 'nowrap',
-                    minWidth: 'auto'
-                  }
-                }}>
-                  <TextField
-                    size="small"
-                    label="Player Name"
-                    value={currentName}
-                    onChange={(e) => setCurrentName(e.target.value)}
-                    onKeyPress={(e) => e.key === 'Enter' && addPlayer()}
-                    sx={{ 
-                      flexGrow: 1,
-                      '& .MuiOutlinedInput-root': {
-                        borderRadius: 2
-                      }
-                    }}
-                  />
-                  <Button
-                    size="small"
-                    variant="contained"
-                    onClick={addPlayer}
-                    disabled={players.length >= REQUIRED_PLAYERS}
-                    startIcon={<PersonAddIcon />}
-                  >
-                    Add
-                  </Button>
-                  <Button
-                    size="small"
-                    variant="outlined"
-                    onClick={addRemainingPlayers}
-                    disabled={players.length >= REQUIRED_PLAYERS}
-                    startIcon={<GroupAddIcon />}
-                  >
-                    Add Rest
-                  </Button>
-                </Box>
-
-                <Typography variant="subtitle1" color="primary.dark" gutterBottom sx={{ fontWeight: 600 }}>
-                  Skill Levels
-                </Typography>
-                <Paper variant="outlined" sx={{ 
-                  height: 'calc(100vh - 450px)',
-                  overflow: 'auto',
-                  borderRadius: 2
-                }}>
-                  <List sx={{ 
-                    '& .MuiListItem-root': {
-                      borderBottom: 1,
-                      borderColor: 'divider',
-                      '&:last-child': {
-                        borderBottom: 0
-                      }
-                    }
+          {isViewMode ? (
+            // View mode - show only the teams/roster
+            <Paper elevation={3} sx={{ p: 3 }}>
+              {teams.length > 0 ? (
+                <Box>
+                  <Box sx={{ 
+                    pb: 2,
+                    mb: 3,
+                    borderBottom: 1,
+                    borderColor: 'divider',
+                    display: 'flex',
+                    justifyContent: 'space-between',
+                    alignItems: 'center'
                   }}>
-                    {players.map((player, index) => (
-                      <ListItem key={index} sx={{ 
-                        flexDirection: 'row', 
-                        alignItems: 'center',
-                        gap: 2,
-                        py: 1.5,
-                        px: 2,
-                        '&:hover': {
-                          bgcolor: 'action.hover'
-                        }
-                      }}>
-                        <ListItemText 
-                          primary={player.name} 
-                          secondary={`Skill: ${player.skillLevel}`}
+                    <Typography variant="h6" color="primary.dark">
+                      Team Distribution
+                    </Typography>
+                    <Button
+                      variant="outlined"
+                      color="primary"
+                      href="/"
+                      size="small"
+                    >
+                      Create New Teams
+                    </Button>
+                  </Box>
+                  <Grid container spacing={2}>
+                    {teams.map((team, index) => (
+                      <Grid item xs={12} key={index}>
+                        <Paper 
+                          elevation={2} 
                           sx={{ 
-                            minWidth: '120px',
-                            '& .MuiListItemText-primary': {
-                              fontWeight: 500
-                            }
-                          }}
-                        />
-                        <Slider
-                          size="small"
-                          value={player.skillLevel}
-                          onChange={(_, newValue) => updateSkillLevel(index, newValue as number)}
-                          min={0}
-                          max={100}
-                          valueLabelDisplay="auto"
-                          sx={{ 
-                            flex: 1,
-                            color: 'primary.main',
-                            '& .MuiSlider-thumb': {
-                              '&:hover, &.Mui-focusVisible': {
-                                boxShadow: `0 0 0 8px ${alpha(theme.palette.primary.main, 0.16)}`
-                              }
-                            }
-                          }}
-                        />
-                        <IconButton 
-                          onClick={() => removePlayer(index)} 
-                          size="small"
-                          sx={{ 
-                            color: 'error.main',
-                            '&:hover': {
-                              bgcolor: alpha('#f44336', 0.1)
-                            }
+                            p: 2.5,
+                            borderLeft: 6,
+                            borderColor: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'warning.main'
                           }}
                         >
-                          <DeleteIcon />
-                        </IconButton>
+                          <Typography variant="subtitle1" gutterBottom sx={{ 
+                            fontWeight: 'bold',
+                            color: index === 0 ? 'primary.dark' : index === 1 ? 'secondary.dark' : 'warning.dark'
+                          }}>
+                            Team {index + 1} <Box component="span" sx={{ color: 'text.secondary', fontSize: '0.9em' }}>
+                              (Total Skill: {team.totalSkill})
+                            </Box>
+                          </Typography>
+                          <Grid container spacing={1}>
+                            {team.players.map((player, playerIndex) => (
+                              <Grid item xs={12} sm={6} md={4} key={playerIndex}>
+                                <Paper 
+                                  variant="outlined" 
+                                  sx={{ 
+                                    p: 1.5,
+                                    bgcolor: alpha(theme.palette.primary.main, 0.02),
+                                    transition: 'all 0.2s',
+                                    '&:hover': {
+                                      bgcolor: alpha(theme.palette.primary.main, 0.05),
+                                      transform: 'translateY(-2px)'
+                                    }
+                                  }}
+                                >
+                                  <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                                    {player.name}
+                                  </Typography>
+                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                    Skill: {player.skillLevel}
+                                  </Typography>
+                                </Paper>
+                              </Grid>
+                            ))}
+                          </Grid>
+                        </Paper>
+                      </Grid>
+                    ))}
+                  </Grid>
+                </Box>
+              ) : (
+                <Box>
+                  <Typography variant="h6" gutterBottom>
+                    Player Roster
+                  </Typography>
+                  <List>
+                    {players.map((player, index) => (
+                      <ListItem key={index}>
+                        <ListItemText 
+                          primary={player.name}
+                          secondary={`Skill Level: ${player.skillLevel}`}
+                        />
                       </ListItem>
                     ))}
                   </List>
-                </Paper>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    href="/"
+                    sx={{ mt: 2 }}
+                  >
+                    Create Teams
+                  </Button>
+                </Box>
+              )}
+            </Paper>
+          ) : (
+            // Edit mode - show the full team builder interface
+            <Grid container spacing={3}>
+              {/* Left side - Players (40%) */}
+              <Grid item xs={12} md={5}>
+                <Paper elevation={3} sx={{ p: 3, height: '100%' }}>
+                  <Box sx={{ 
+                    display: 'flex', 
+                    justifyContent: 'space-between', 
+                    alignItems: 'center', 
+                    mb: 3,
+                    pb: 2,
+                    borderBottom: 1,
+                    borderColor: 'divider'
+                  }}>
+                    <Typography variant="h6" color="primary.dark">
+                      Players ({players.length}/{REQUIRED_PLAYERS})
+                    </Typography>
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <IconButton
+                        onClick={() => shareUrl(false, true)}
+                        color="primary"
+                        size="small"
+                        disabled={players.length === 0}
+                        sx={{ 
+                          bgcolor: alpha(theme.palette.primary.main, 0.1),
+                          '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.2) }
+                        }}
+                      >
+                        <ShareIcon />
+                      </IconButton>
+                      <IconButton 
+                        onClick={resetAll} 
+                        color="error" 
+                        size="small" 
+                        sx={{ 
+                          bgcolor: alpha('#f44336', 0.1),
+                          '&:hover': { bgcolor: alpha('#f44336', 0.2) }
+                        }}
+                      >
+                        <RefreshIcon />
+                      </IconButton>
+                    </Box>
+                  </Box>
 
-                <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Maximum Skill Difference: {maxSkillDiff}
-                  </Typography>
-                  <Slider
-                    size="small"
-                    value={maxSkillDiff}
-                    onChange={(_, newValue) => setMaxSkillDiff(newValue as number)}
-                    min={0}
-                    max={200}
-                    valueLabelDisplay="auto"
-                    sx={{ mb: 2 }}
-                  />
-                  <Box sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      onClick={calculateTeams}
-                      disabled={players.length !== REQUIRED_PLAYERS}
-                      size="large"
-                      startIcon={<CalculateIcon />}
+                  <Box sx={{ 
+                    display: 'flex', 
+                    gap: 1,
+                    mb: 3,
+                    flexWrap: 'nowrap',
+                    '& .MuiButton-root': {
+                      whiteSpace: 'nowrap',
+                      minWidth: 'auto'
+                    }
+                  }}>
+                    <TextField
+                      size="small"
+                      label="Player Name"
+                      value={currentName}
+                      onChange={(e) => setCurrentName(e.target.value)}
+                      onKeyPress={(e) => e.key === 'Enter' && addPlayer()}
                       sx={{ 
-                        px: 4,
-                        py: 1,
-                        boxShadow: 4,
-                        '&:hover': {
-                          boxShadow: 6
+                        flexGrow: 1,
+                        '& .MuiOutlinedInput-root': {
+                          borderRadius: 2
                         }
                       }}
+                    />
+                    <Button
+                      size="small"
+                      variant="contained"
+                      onClick={addPlayer}
+                      disabled={players.length >= REQUIRED_PLAYERS}
+                      startIcon={<PersonAddIcon />}
                     >
-                      Calculate Teams
+                      Add
                     </Button>
-                    {players.length > 0 && players.length !== REQUIRED_PLAYERS && (
-                      <Typography variant="caption" color="error">
-                        Need exactly {REQUIRED_PLAYERS} players for 3 teams of 5
-                      </Typography>
-                    )}
+                    <Button
+                      size="small"
+                      variant="outlined"
+                      onClick={addRemainingPlayers}
+                      disabled={players.length >= REQUIRED_PLAYERS}
+                      startIcon={<GroupAddIcon />}
+                    >
+                      Add Rest
+                    </Button>
                   </Box>
-                </Box>
-              </Paper>
-            </Grid>
 
-            {/* Right side - Teams (60%) */}
-            <Grid item xs={12} md={7}>
-              <Paper elevation={3} sx={{ p: 3, height: '100%', bgcolor: teams.length ? 'background.paper' : alpha(theme.palette.primary.main, 0.04) }}>
-                {teams.length > 0 ? (
-                  <Box>
-                    <Typography variant="h6" gutterBottom color="primary.dark" sx={{ 
-                      pb: 2,
-                      borderBottom: 1,
-                      borderColor: 'divider',
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'center'
+                  <Typography variant="subtitle1" color="primary.dark" gutterBottom sx={{ fontWeight: 600 }}>
+                    Skill Levels
+                  </Typography>
+                  <Paper variant="outlined" sx={{ 
+                    height: 'calc(100vh - 450px)',
+                    overflow: 'auto',
+                    borderRadius: 2
+                  }}>
+                    <List sx={{ 
+                      '& .MuiListItem-root': {
+                        borderBottom: 1,
+                        borderColor: 'divider',
+                        '&:last-child': {
+                          borderBottom: 0
+                        }
+                      }
                     }}>
-                      <span>Team Distribution</span>
-                      {teams.length > 0 && (
-                        <IconButton
-                          color="primary"
-                          onClick={() => shareUrl(true)}
-                          size="small"
-                          sx={{ 
-                            bgcolor: alpha(theme.palette.primary.main, 0.1),
-                            '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.2) }
-                          }}
-                        >
-                          <ShareIcon />
-                        </IconButton>
-                      )}
-                    </Typography>
-                    <Grid container spacing={2}>
-                      {teams.map((team, index) => (
-                        <Grid item xs={12} key={index}>
-                          <Paper 
-                            elevation={2} 
+                      {players.map((player, index) => (
+                        <ListItem key={index} sx={{ 
+                          flexDirection: 'row', 
+                          alignItems: 'center',
+                          gap: 2,
+                          py: 1.5,
+                          px: 2,
+                          '&:hover': {
+                            bgcolor: 'action.hover'
+                          }
+                        }}>
+                          <ListItemText 
+                            primary={player.name} 
+                            secondary={`Skill: ${player.skillLevel}`}
                             sx={{ 
-                              p: 2.5,
-                              borderLeft: 6,
-                              borderColor: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'warning.main'
+                              minWidth: '120px',
+                              '& .MuiListItemText-primary': {
+                                fontWeight: 500
+                              }
+                            }}
+                          />
+                          <Slider
+                            size="small"
+                            value={player.skillLevel}
+                            onChange={(_, newValue) => updateSkillLevel(index, newValue as number)}
+                            min={0}
+                            max={100}
+                            valueLabelDisplay="auto"
+                            sx={{ 
+                              flex: 1,
+                              color: 'primary.main',
+                              '& .MuiSlider-thumb': {
+                                '&:hover, &.Mui-focusVisible': {
+                                  boxShadow: `0 0 0 8px ${alpha(theme.palette.primary.main, 0.16)}`
+                                }
+                              }
+                            }}
+                          />
+                          <IconButton 
+                            onClick={() => removePlayer(index)} 
+                            size="small"
+                            sx={{ 
+                              color: 'error.main',
+                              '&:hover': {
+                                bgcolor: alpha('#f44336', 0.1)
+                              }
                             }}
                           >
-                            <Typography variant="subtitle1" gutterBottom sx={{ 
-                              fontWeight: 'bold',
-                              color: index === 0 ? 'primary.dark' : index === 1 ? 'secondary.dark' : 'warning.dark'
-                            }}>
-                              Team {index + 1} <Box component="span" sx={{ color: 'text.secondary', fontSize: '0.9em' }}>
-                                (Total Skill: {team.totalSkill})
-                              </Box>
-                            </Typography>
-                            <Grid container spacing={1}>
-                              {team.players.map((player, playerIndex) => (
-                                <Grid item xs={12} sm={6} md={4} key={playerIndex}>
-                                  <Paper 
-                                    variant="outlined" 
-                                    sx={{ 
-                                      p: 1.5,
-                                      bgcolor: alpha(theme.palette.primary.main, 0.02),
-                                      transition: 'all 0.2s',
-                                      '&:hover': {
-                                        bgcolor: alpha(theme.palette.primary.main, 0.05),
-                                        transform: 'translateY(-2px)'
-                                      }
-                                    }}
-                                  >
-                                    <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                                      {player.name}
-                                    </Typography>
-                                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                      Skill: {player.skillLevel}
-                                    </Typography>
-                                  </Paper>
-                                </Grid>
-                              ))}
-                            </Grid>
-                          </Paper>
-                        </Grid>
+                            <DeleteIcon />
+                          </IconButton>
+                        </ListItem>
                       ))}
-                    </Grid>
-                  </Box>
-                ) : (
-                  <Box sx={{ 
-                    height: '100%', 
-                    display: 'flex', 
-                    alignItems: 'center', 
-                    justifyContent: 'center',
-                    flexDirection: 'column',
-                    gap: 2,
-                    p: 3
-                  }}>
-                    <SportsSoccerIcon sx={{ fontSize: 60, color: 'primary.main', opacity: 0.5 }} />
-                    <Typography variant="h6" color="text.secondary" align="center">
-                      Add exactly {REQUIRED_PLAYERS} players to create 3 balanced teams of 5 players each
+                    </List>
+                  </Paper>
+
+                  <Box sx={{ mt: 3, display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Maximum Skill Difference: {maxSkillDiff}
                     </Typography>
+                    <Slider
+                      size="small"
+                      value={maxSkillDiff}
+                      onChange={(_, newValue) => setMaxSkillDiff(newValue as number)}
+                      min={0}
+                      max={200}
+                      valueLabelDisplay="auto"
+                      sx={{ mb: 2 }}
+                    />
+                    <Box sx={{ display: 'flex', justifyContent: 'center', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
+                      <Button
+                        variant="contained"
+                        color="primary"
+                        onClick={calculateTeams}
+                        disabled={players.length !== REQUIRED_PLAYERS}
+                        size="large"
+                        startIcon={<CalculateIcon />}
+                        sx={{ 
+                          px: 4,
+                          py: 1,
+                          boxShadow: 4,
+                          '&:hover': {
+                            boxShadow: 6
+                          }
+                        }}
+                      >
+                        Calculate Teams
+                      </Button>
+                      {players.length > 0 && players.length !== REQUIRED_PLAYERS && (
+                        <Typography variant="caption" color="error">
+                          Need exactly {REQUIRED_PLAYERS} players for 3 teams of 5
+                        </Typography>
+                      )}
+                    </Box>
                   </Box>
-                )}
-              </Paper>
+                </Paper>
+              </Grid>
+
+              {/* Right side - Teams (60%) */}
+              <Grid item xs={12} md={7}>
+                <Paper elevation={3} sx={{ p: 3, height: '100%', bgcolor: teams.length ? 'background.paper' : alpha(theme.palette.primary.main, 0.04) }}>
+                  {teams.length > 0 ? (
+                    <Box>
+                      <Typography variant="h6" gutterBottom color="primary.dark" sx={{ 
+                        pb: 2,
+                        borderBottom: 1,
+                        borderColor: 'divider',
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        alignItems: 'center'
+                      }}>
+                        <span>Team Distribution</span>
+                        {teams.length > 0 && (
+                          <IconButton
+                            color="primary"
+                            onClick={() => shareUrl(true)}
+                            size="small"
+                            sx={{ 
+                              bgcolor: alpha(theme.palette.primary.main, 0.1),
+                              '&:hover': { bgcolor: alpha(theme.palette.primary.main, 0.2) }
+                            }}
+                          >
+                            <ShareIcon />
+                          </IconButton>
+                        )}
+                      </Typography>
+                      <Grid container spacing={2}>
+                        {teams.map((team, index) => (
+                          <Grid item xs={12} key={index}>
+                            <Paper 
+                              elevation={2} 
+                              sx={{ 
+                                p: 2.5,
+                                borderLeft: 6,
+                                borderColor: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'warning.main'
+                              }}
+                            >
+                              <Typography variant="subtitle1" gutterBottom sx={{ 
+                                fontWeight: 'bold',
+                                color: index === 0 ? 'primary.dark' : index === 1 ? 'secondary.dark' : 'warning.dark'
+                              }}>
+                                Team {index + 1} <Box component="span" sx={{ color: 'text.secondary', fontSize: '0.9em' }}>
+                                  (Total Skill: {team.totalSkill})
+                                </Box>
+                              </Typography>
+                              <Grid container spacing={1}>
+                                {team.players.map((player, playerIndex) => (
+                                  <Grid item xs={12} sm={6} md={4} key={playerIndex}>
+                                    <Paper 
+                                      variant="outlined" 
+                                      sx={{ 
+                                        p: 1.5,
+                                        bgcolor: alpha(theme.palette.primary.main, 0.02),
+                                        transition: 'all 0.2s',
+                                        '&:hover': {
+                                          bgcolor: alpha(theme.palette.primary.main, 0.05),
+                                          transform: 'translateY(-2px)'
+                                        }
+                                      }}
+                                    >
+                                      <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
+                                        {player.name}
+                                      </Typography>
+                                      <Typography variant="caption" sx={{ color: 'text.secondary' }}>
+                                        Skill: {player.skillLevel}
+                                      </Typography>
+                                    </Paper>
+                                  </Grid>
+                                ))}
+                              </Grid>
+                            </Paper>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  ) : (
+                    <Box sx={{ 
+                      height: '100%', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      flexDirection: 'column',
+                      gap: 2,
+                      p: 3
+                    }}>
+                      <SportsSoccerIcon sx={{ fontSize: 60, color: 'primary.main', opacity: 0.5 }} />
+                      <Typography variant="h6" color="text.secondary" align="center">
+                        Add exactly {REQUIRED_PLAYERS} players to create 3 balanced teams of 5 players each
+                      </Typography>
+                    </Box>
+                  )}
+                </Paper>
+              </Grid>
             </Grid>
-          </Grid>
+          )}
         </Container>
       </Box>
 
