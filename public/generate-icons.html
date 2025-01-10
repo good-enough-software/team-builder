@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Icons</title>
+  <style>
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="icon144" width="144" height="144"></canvas>
+  <canvas id="icon192" width="192" height="192"></canvas>
+  <canvas id="icon512" width="512" height="512"></canvas>
+  <script>
+    function drawSoccerBall(ctx, size) {
+      const centerX = size / 2;
+      const centerY = size / 2;
+      const radius = size * 0.4;
+
+      // Draw white ball
+      ctx.beginPath();
+      ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+      ctx.fillStyle = 'white';
+      ctx.fill();
+      ctx.strokeStyle = '#2E7D32';
+      ctx.lineWidth = size * 0.02;
+      ctx.stroke();
+
+      // Draw pentagon pattern
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const angle = (i * 2 * Math.PI) / 5 - Math.PI / 2;
+        const x = centerX + radius * 0.7 * Math.cos(angle);
+        const y = centerY + radius * 0.7 * Math.sin(angle);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.closePath();
+      ctx.strokeStyle = '#2E7D32';
+      ctx.lineWidth = size * 0.04;
+      ctx.stroke();
+
+      // Draw hexagon pattern
+      ctx.beginPath();
+      for (let i = 0; i < 6; i++) {
+        const angle = (i * 2 * Math.PI) / 6;
+        const x = centerX + radius * 0.5 * Math.cos(angle);
+        const y = centerY + radius * 0.5 * Math.sin(angle);
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      ctx.closePath();
+      ctx.strokeStyle = '#2E7D32';
+      ctx.lineWidth = size * 0.03;
+      ctx.stroke();
+    }
+
+    function generateIcon(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      const size = canvas.width;
+
+      // Clear canvas with transparent background
+      ctx.clearRect(0, 0, size, size);
+
+      // Draw soccer ball
+      drawSoccerBall(ctx, size);
+
+      // Save
+      const link = document.createElement('a');
+      link.download = `soccer-${size}.png`;
+      link.href = canvas.toDataURL('image/png');
+      link.click();
+    }
+
+    // Generate all icons
+    generateIcon('icon144');
+    generateIcon('icon192');
+    generateIcon('icon512');
+  </script>
+</body>
+</html> 

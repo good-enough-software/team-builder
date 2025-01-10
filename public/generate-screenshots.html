@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Generate Screenshots</title>
+  <style>
+    canvas {
+      border: 1px solid #ccc;
+      margin: 10px;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="desktopCanvas" width="1920" height="1080"></canvas>
+  <canvas id="mobileCanvas" width="1080" height="1920"></canvas>
+  <script>
+    function drawScreenshot(canvasId, text, bgColor) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      
+      // Background
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      // Text
+      ctx.fillStyle = '#2E7D32';
+      ctx.font = 'bold 48px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+      
+      // Save
+      const link = document.createElement('a');
+      link.download = canvasId === 'desktopCanvas' ? 'screenshot-desktop.png' : 'screenshot-mobile.png';
+      link.href = canvas.toDataURL();
+      link.click();
+    }
+
+    // Generate both screenshots
+    drawScreenshot('desktopCanvas', 'Soccer Team Builder - Desktop View', '#F5F5F5');
+    drawScreenshot('mobileCanvas', 'Soccer Team Builder - Mobile View', '#F5F5F5');
+  </script>
+</body>
+</html> 
