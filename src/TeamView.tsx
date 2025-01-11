@@ -84,18 +84,39 @@ function TeamView() {
 
   useEffect(() => {
     try {
-      const urlParams = new URLSearchParams(window.location.search);
-      const encodedData = urlParams.get('data');
-      if (encodedData) {
-        const decodedData: ShareData = JSON.parse(decodeURIComponent(encodedData));
-        setShareData(decodedData);
+      // Get hash without the # symbol
+      const hash = window.location.hash.substring(1);
+      
+      if (hash) {
+        const params = new URLSearchParams(hash);
+        const teams: Team[] = [];
         
-        // If it's a roster, save to localStorage and redirect
-        if (decodedData.rosterOnly && decodedData.players) {
-          localStorage.setItem('soccerPlayers', JSON.stringify(decodedData.players));
-          localStorage.setItem('soccerTeams', JSON.stringify([])); // Clear any existing teams
-          window.location.href = window.location.origin;
-          return;
+        // Parse team1, team2, team3 from hash
+        for (let i = 1; i <= 3; i++) {
+          const teamPlayers = params.get(`team${i}`);
+          if (teamPlayers) {
+            const players = teamPlayers.split(',').map(name => ({
+              name: decodeURIComponent(name.trim()),
+              skillLevel: 50 // Default skill level
+            }));
+            teams.push({ players, totalSkill: 0 });
+          }
+        }
+        
+        if (teams.length > 0) {
+          // Save teams to localStorage
+          localStorage.setItem('soccerTeams', JSON.stringify(teams));
+          
+          setShareData({
+            teams,
+            includeSkills: false,
+            timestamp: new Date().toISOString(),
+            showBackButton: true,
+            showCalculations: false,
+            rosterOnly: false
+          });
+        } else {
+          setError('No team data found');
         }
       } else {
         setError('No team data found');
@@ -166,17 +187,7 @@ function TeamView() {
             </Typography>
           </Box>
 
-          {shareData.showBackButton && (
-            <Box sx={{ mb: 3 }}>
-              <Button
-                variant="outlined"
-                startIcon={<ArrowBackIcon />}
-                onClick={handleBackToBuilder}
-              >
-                Back to Team Builder
-              </Button>
-            </Box>
-          )}
+         
 
           {shareData.rosterOnly ? (
             <Paper elevation={3} sx={{ p: 3 }}>
@@ -223,11 +234,7 @@ function TeamView() {
                       fontWeight: 'bold',
                       color: index === 0 ? 'primary.dark' : index === 1 ? 'secondary.dark' : 'warning.dark'
                     }}>
-                      Team {index + 1} {shareData.showCalculations && 
-                        <Box component="span" sx={{ color: 'text.secondary', fontSize: '0.9em' }}>
-                          (Total Skill: {team.totalSkill})
-                        </Box>
-                      }
+                      Team {index + 1}
                     </Typography>
                     <Grid container spacing={1}>
                       {team.players.map((player, playerIndex) => (
@@ -244,9 +251,6 @@ function TeamView() {
                           >
                             <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
                               {player.name}
-                            </Typography>
-                            <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                              Skill: {player.skillLevel}
                             </Typography>
                           </Paper>
                         </Grid>

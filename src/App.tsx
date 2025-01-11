@@ -83,95 +83,69 @@ interface Team {
 
 function App() {
   const REQUIRED_PLAYERS = 15;
-  const [isViewMode, setIsViewMode] = useState(false);
-
-  // Check if we're in view mode on mount and hash changes
-  useEffect(() => {
-    const checkViewMode = () => {
-      const hash = window.location.hash;
-      setIsViewMode(hash.startsWith('#/view'));
-    };
-
-    checkViewMode();
-    window.addEventListener('hashchange', checkViewMode);
-    return () => window.removeEventListener('hashchange', checkViewMode);
-  }, []);
-
   const [players, setPlayers] = useState<Player[]>(() => {
-    // Try to load data from URL hash first
-    const hash = window.location.hash;
-    if (hash.startsWith('#/view?data=')) {
-      try {
-        const encodedData = hash.replace('#/view?data=', '');
-        const decodedData = JSON.parse(decodeURIComponent(encodedData));
-        if (decodedData.players) {
-          return decodedData.players;
-        }
-        if (decodedData.teams) {
-          // Flatten all players from teams into a single array
-          const allPlayers = decodedData.teams.flatMap((team: Team) => team.players);
-          return allPlayers;
-        }
-      } catch (error) {
-        console.error('Error parsing URL data:', error);
-      }
-    }
-    // Fall back to localStorage if no URL data
     const savedPlayers = localStorage.getItem('soccerPlayers');
     return savedPlayers ? JSON.parse(savedPlayers) : [];
   });
-  
   const [currentName, setCurrentName] = useState('');
   const [maxSkillDiff, setMaxSkillDiff] = useState(50);
   const [teams, setTeams] = useState<Team[]>(() => {
-    // Try to load teams from URL hash first
-    const hash = window.location.hash;
-    if (hash.startsWith('#/view?data=')) {
-      try {
-        const encodedData = hash.replace('#/view?data=', '');
-        const decodedData = JSON.parse(decodeURIComponent(encodedData));
-        if (decodedData.teams) {
-          return decodedData.teams;
-        }
-      } catch (error) {
-        console.error('Error parsing URL data:', error);
-      }
-    }
-    // Fall back to localStorage if no URL data
     const savedTeams = localStorage.getItem('soccerTeams');
     return savedTeams ? JSON.parse(savedTeams) : [];
   });
   const [snackbarOpen, setSnackbarOpen] = useState(false);
   const [snackbarMessage, setSnackbarMessage] = useState('');
 
-  // Add effect to handle hash changes
+  // Check if we're in view mode on mount and hash changes
   useEffect(() => {
-    const handleHashChange = () => {
+    const checkViewMode = () => {
       const hash = window.location.hash;
-      if (hash.startsWith('#/view?data=')) {
-        try {
-          const encodedData = hash.replace('#/view?data=', '');
-          const decodedData = JSON.parse(decodeURIComponent(encodedData));
-          if (decodedData.players) {
-            setPlayers(decodedData.players);
+      if (!hash) return;
+      
+      const params = new URLSearchParams(hash.substring(1));
+      const isTeamView = Array.from(params.keys()).some(key => key.startsWith('team'));
+      
+      // Parse players from URL
+      if (!isTeamView) {
+        const urlPlayers: Player[] = [];
+        params.forEach((value, key) => {
+          urlPlayers.push({
+            name: decodeURIComponent(key),
+            skillLevel: parseInt(value, 10)
+          });
+        });
+        if (urlPlayers.length > 0) {
+          setPlayers(urlPlayers);
+        }
+      }
+      
+      // Parse teams from URL
+      if (isTeamView) {
+        const urlTeams: Team[] = [];
+        for (let i = 1; i <= 3; i++) {
+          const teamParam = params.get(`team${i}`);
+          if (teamParam) {
+            const playerNames = teamParam.split(',').map(name => decodeURIComponent(name));
+            const teamPlayers = playerNames.map(name => {
+              const player = players.find(p => p.name === name) || { name, skillLevel: 50 };
+              return player;
+            });
+            urlTeams.push({
+              players: teamPlayers,
+              totalSkill: teamPlayers.reduce((sum, p) => sum + p.skillLevel, 0)
+            });
           }
-          if (decodedData.teams) {
-            setTeams(decodedData.teams);
-            if (!decodedData.players) {
-              // If only teams were shared, extract players from teams
-              const allPlayers = decodedData.teams.flatMap((team: Team) => team.players);
-              setPlayers(allPlayers);
-            }
-          }
-        } catch (error) {
-          console.error('Error parsing URL data:', error);
+        }
+        if (urlTeams.length > 0) {
+          setTeams(urlTeams);
         }
       }
     };
 
-    window.addEventListener('hashchange', handleHashChange);
-    return () => window.removeEventListener('hashchange', handleHashChange);
-  }, []);
+    checkViewMode();
+    window.addEventListener('hashchange', checkViewMode);
+    return () => window.removeEventListener('hashchange', checkViewMode);
+  }, [players]);
 
   // Save players to localStorage whenever they change
   useEffect(() => {
@@ -301,46 +275,28 @@ function App() {
   };
 
   // Function to generate shareable URLs
-  const generateShareableUrl = (includeSkills: boolean, rosterOnly: boolean = false) => {
-    const shareData = {
-      players: rosterOnly ? players : undefined,
-      teams: !rosterOnly ? (includeSkills ? teams : teams.map(team => ({
-        ...team,
-        players: team.players.map(player => ({
-          name: player.name,
-          skillLevel: player.skillLevel
-        }))
-      }))) : undefined,
-      includeSkills,
-      timestamp: new Date().toISOString(),
-      showBackButton: !includeSkills,
-      showCalculations: includeSkills,
-      rosterOnly
-    };
-    const encodedData = encodeURIComponent(JSON.stringify(shareData));
-    const baseUrl = import.meta.env.DEV ? window.location.origin : 'https://good-enough-software.github.io/team-builder';
-    // Use hash-based routing instead of path-based to avoid service worker issues
-    return `${baseUrl}/#/view?data=${encodedData}`;
-  };
-
-  // Function to shorten URL using TinyURL
-  const shortenUrl = async (url: string): Promise<string> => {
-    try {
-      const response = await fetch(`https://tinyurl.com/api-create.php?url=${encodeURIComponent(url)}`);
-      if (!response.ok) throw new Error('Failed to shorten URL');
-      return await response.text();
-    } catch (error) {
-      console.error('Error shortening URL:', error);
-      return url; // Return original URL if shortening fails
+  const generateShareableUrl = (full: boolean = false) => {
+    const baseUrl = (import.meta.env.DEV ? window.location.origin : 'https://good-enough-software.github.io') + '/team-builder';
+    
+    if (full) {
+      // Create URL with player names and scores
+      const playerParams = players.map(player => `${encodeURIComponent(player.name)}=${player.skillLevel}`).join('&');
+      return `${baseUrl}/#${playerParams}`;
+    } else {
+      // Create URL with team assignments
+      const teamParams = teams.map((team, index) => {
+        const playerNames = team.players.map(player => encodeURIComponent(player.name)).join(',');
+        return `team${index + 1}=${playerNames}`;
+      }).join('&');
+      return `${baseUrl}/${full ? '' : 'view/'}#?${teamParams}`;``
     }
   };
 
   // Function to share URL or fallback to clipboard
-  const shareUrl = async (includeSkills: boolean, rosterOnly: boolean = false) => {
-    const longUrl = generateShareableUrl(includeSkills, rosterOnly);
-    const url = await shortenUrl(longUrl);
-    const title = rosterOnly ? 'Soccer Roster' : 'Soccer Teams';
-    const text = rosterOnly ? 'Check out this soccer roster!' : 'Check out these soccer teams!';
+  const shareUrl = async (full: boolean = false) => {
+    const url = generateShareableUrl(full);
+    const title = full ? 'Soccer Teams' : 'Soccer Roster';
+    const text = full ? 'Check out these soccer teams!' : 'Check out this soccer roster!';
 
     try {
       if (navigator.share) {
@@ -386,109 +342,7 @@ function App() {
             </Typography>
           </Box>
 
-          {isViewMode ? (
-            // View mode - show only the teams/roster
-            <Paper elevation={3} sx={{ p: 3 }}>
-              {teams.length > 0 ? (
-                <Box>
-                  <Box sx={{ 
-                    pb: 2,
-                    mb: 3,
-                    borderBottom: 1,
-                    borderColor: 'divider',
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center'
-                  }}>
-                    <Typography variant="h6" color="primary.dark">
-                      Team Distribution
-                    </Typography>
-                    <Button
-                      variant="outlined"
-                      color="primary"
-                      href="/"
-                      size="small"
-                    >
-                      Create New Teams
-                    </Button>
-                  </Box>
-                  <Grid container spacing={2}>
-                    {teams.map((team, index) => (
-                      <Grid item xs={12} key={index}>
-                        <Paper 
-                          elevation={2} 
-                          sx={{ 
-                            p: 2.5,
-                            borderLeft: 6,
-                            borderColor: index === 0 ? 'primary.main' : index === 1 ? 'secondary.main' : 'warning.main'
-                          }}
-                        >
-                          <Typography variant="subtitle1" gutterBottom sx={{ 
-                            fontWeight: 'bold',
-                            color: index === 0 ? 'primary.dark' : index === 1 ? 'secondary.dark' : 'warning.dark'
-                          }}>
-                            Team {index + 1} <Box component="span" sx={{ color: 'text.secondary', fontSize: '0.9em' }}>
-                              (Total Skill: {team.totalSkill})
-                            </Box>
-                          </Typography>
-                          <Grid container spacing={1}>
-                            {team.players.map((player, playerIndex) => (
-                              <Grid item xs={12} sm={6} md={4} key={playerIndex}>
-                                <Paper 
-                                  variant="outlined" 
-                                  sx={{ 
-                                    p: 1.5,
-                                    bgcolor: alpha(theme.palette.primary.main, 0.02),
-                                    transition: 'all 0.2s',
-                                    '&:hover': {
-                                      bgcolor: alpha(theme.palette.primary.main, 0.05),
-                                      transform: 'translateY(-2px)'
-                                    }
-                                  }}
-                                >
-                                  <Typography variant="body2" sx={{ fontWeight: 'medium' }}>
-                                    {player.name}
-                                  </Typography>
-                                  <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                                    Skill: {player.skillLevel}
-                                  </Typography>
-                                </Paper>
-                              </Grid>
-                            ))}
-                          </Grid>
-                        </Paper>
-                      </Grid>
-                    ))}
-                  </Grid>
-                </Box>
-              ) : (
-                <Box>
-                  <Typography variant="h6" gutterBottom>
-                    Player Roster
-                  </Typography>
-                  <List>
-                    {players.map((player, index) => (
-                      <ListItem key={index}>
-                        <ListItemText 
-                          primary={player.name}
-                          secondary={`Skill Level: ${player.skillLevel}`}
-                        />
-                      </ListItem>
-                    ))}
-                  </List>
-                  <Button
-                    variant="outlined"
-                    color="primary"
-                    href="/"
-                    sx={{ mt: 2 }}
-                  >
-                    Create Teams
-                  </Button>
-                </Box>
-              )}
-            </Paper>
-          ) : (
-            // Edit mode - show the full team builder interface
+          
             <Grid container spacing={3}>
               {/* Left side - Players (40%) */}
               <Grid item xs={12} md={5}>
@@ -507,7 +361,7 @@ function App() {
                     </Typography>
                     <Box sx={{ display: 'flex', gap: 1 }}>
                       <IconButton
-                        onClick={() => shareUrl(false, true)}
+                        onClick={() => shareUrl(true)}
                         color="primary"
                         size="small"
                         disabled={players.length === 0}
@@ -706,7 +560,7 @@ function App() {
                         {teams.length > 0 && (
                           <IconButton
                             color="primary"
-                            onClick={() => shareUrl(true)}
+                            onClick={() => shareUrl(false)}
                             size="small"
                             sx={{ 
                               bgcolor: alpha(theme.palette.primary.main, 0.1),
@@ -785,7 +639,6 @@ function App() {
                 </Paper>
               </Grid>
             </Grid>
-          )}
         </Container>
       </Box>
 
