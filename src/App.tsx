@@ -309,7 +309,7 @@ function App() {
       } else {
         // Fallback to clipboard
         await navigator.clipboard.writeText(url);
-        setSnackbarMessage(rosterOnly ? 'Roster link copied!' : 'Team details copied!');
+        setSnackbarMessage(full ? 'Roster link copied!' : 'Team details copied!');
       }
       setSnackbarOpen(true);
     } catch (err) {
